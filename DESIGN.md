@@ -27,4 +27,7 @@ class Allocator{
 };
 ```
 
+### Class::BuddyAllocator
+
+
 
