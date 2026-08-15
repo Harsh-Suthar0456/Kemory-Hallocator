@@ -4,6 +4,6 @@
 
 class Allocator { 
   public: 
-    void* get(size_t size);
-    void free(void* ptr);  
+    virtual void* get(size_t size) = 0;
+    virtual void free(void* ptr) = 0;  
 };
