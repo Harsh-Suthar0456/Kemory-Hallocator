@@ -22,16 +22,17 @@ class BuddyAllocator: public Allocator{
     std::unordered_map<void*, int> blockOrderMap;
     std::vector<std::vector<void*>> freeBlocks;
 
-
-
     void* getFromOS(size_t size);
     void addBack(void* ptr, size_t size);
     unsigned int getOrderFromSize(size_t size);
     size_t getSizeFromOrder(unsigned int order);
     size_t getSize(void* ptr);
+    void* getBuddy(void* ptr);
     void* getBuddy(void* ptr, size_t size);
+    void* recursiveGet(void* currentPtr, unsigned int currentOrder, unsigned int targetOrder);
                                            
   public:
     virtual void* get(size_t size) override;
     virtual void free(void* ptr) override;
+
 };
