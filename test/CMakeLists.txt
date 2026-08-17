@@ -1,20 +1,27 @@
-find_package(Catch2 3 REQUIRED)
+cmake_minimum_required(VERSION 3.20)
 
-include(Catch)
-
-add_executable(unit_test
-    segregated_test.cc
+project(khalloc
+    VERSION 0.1.0
+    LANGUAGES CXX
 )
 
-target_link_libraries(unit_test
-    PRIVATE 
-        khalloc
-        Catch2::Catch2WithMain
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+add_library(khalloc STATIC
+
 )
 
-target_include_directories(unit_test
+target_include_directories(khalloc
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
-        ${PROJECT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-catch_discover_tests(unit_test)
+include(CTest)
+
+if(BUILD_TESTING)
+    add_subdirectory(test)
+endif()
