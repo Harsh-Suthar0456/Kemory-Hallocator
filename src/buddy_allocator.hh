@@ -1,6 +1,7 @@
 #pragma once
 
 #include<iostream>
+#include <unordered_map>
 #include<vector>
 
 #include "base.h"
@@ -10,16 +11,24 @@
 /*
 BuddyAllocator
 - Buddy shall be calculated by taking XOR with the Size
-- To get the size of the memory when it has to be freed, we shall find the Lowest Set Bit(LSB). Given that the OS might give us a start address that is not a power of 2, we shall store a MASK to first XOR with that and convert to power of 2 format, for the start address
+- We could store the order of each block in a separate data structure, like a static array or a hash map, to keep track of the size of each allocated block. This way, when we need to free a block, we can look up its size and calculate its buddy accordingly. 
 */
 
 class BuddyAllocator: public Allocator{
     private:
 
-    static void* MASK;
+    void* START_ADDR;
+
+    std::unordered_map<void*, int> blockOrderMap;
+    std::vector<std::vector<void*>> freeBlocks;
+
+
 
     void* getFromOS(size_t size);
     void addBack(void* ptr, size_t size);
+    unsigned int getOrderFromSize(size_t size);
+    size_t getSizeFromOrder(unsigned int order);
+    size_t getSize(void* ptr);
     void* getBuddy(void* ptr, size_t size);
                                            
   public:
