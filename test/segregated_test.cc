@@ -1,4 +1,4 @@
-#include <catch2/catch_test_macros.hpp>
+#include <gtest/gtest.h>
 
 #include <cstddef>
 #include <unordered_set>
@@ -17,7 +17,7 @@ struct DummyBaseAllocator : Allocator {
 
 using Alloc = SegregatedListAllocator<8, DummyBaseAllocator>;
 
-TEST_CASE("SegregatedListAllocator allocates blocks", "[allocator]") {
+TEST(SegregatedListAllocatorTest, AllocatesBlocks) {
     Alloc allocator;
 
     std::vector<void*> ptrs;
@@ -27,44 +27,43 @@ TEST_CASE("SegregatedListAllocator allocates blocks", "[allocator]") {
     for (size_t i = 0; i < N; ++i) {
         void* ptr = allocator.get(8);
 
-        REQUIRE(ptr != nullptr);
+        ASSERT_NE(ptr, nullptr);
         ptrs.push_back(ptr);
     }
 
-    // Every allocation should be distinct.
     std::unordered_set<void*> unique(ptrs.begin(), ptrs.end());
 
-    REQUIRE(unique.size() == N);
+    EXPECT_EQ(unique.size(), N);
 }
 
-TEST_CASE("SegregatedListAllocator rejects wrong sizes", "[allocator]") {
+TEST(SegregatedListAllocatorTest, RejectsWrongSizes) {
     Alloc allocator;
 
-    REQUIRE(allocator.get(1) == nullptr);
-    REQUIRE(allocator.get(4) == nullptr);
-    REQUIRE(allocator.get(16) == nullptr);
-    REQUIRE(allocator.get(0) == nullptr);
+    EXPECT_EQ(allocator.get(1), nullptr);
+    EXPECT_EQ(allocator.get(4), nullptr);
+    EXPECT_EQ(allocator.get(16), nullptr);
+    EXPECT_EQ(allocator.get(0), nullptr);
 }
 
-TEST_CASE("SegregatedListAllocator reuses freed blocks", "[allocator]") {
+TEST(SegregatedListAllocatorTest, ReusesFreedBlocks) {
     Alloc allocator;
 
     void* p1 = allocator.get(8);
     void* p2 = allocator.get(8);
     void* p3 = allocator.get(8);
 
-    REQUIRE(p1 != nullptr);
-    REQUIRE(p2 != nullptr);
-    REQUIRE(p3 != nullptr);
+    ASSERT_NE(p1, nullptr);
+    ASSERT_NE(p2, nullptr);
+    ASSERT_NE(p3, nullptr);
 
     allocator.free(p2);
 
     void* p4 = allocator.get(8);
 
-    REQUIRE(p4 == p2);
+    EXPECT_EQ(p4, p2);
 }
 
-TEST_CASE("SegregatedListAllocator can reuse multiple freed blocks", "[allocator]") {
+TEST(SegregatedListAllocatorTest, ReusesMultipleFreedBlocks) {
     Alloc allocator;
 
     std::vector<void*> ptrs;
@@ -75,14 +74,12 @@ TEST_CASE("SegregatedListAllocator can reuse multiple freed blocks", "[allocator
         ptrs.push_back(allocator.get(8));
     }
 
-    // Free a few blocks.
     allocator.free(ptrs[3]);
     allocator.free(ptrs[7]);
     allocator.free(ptrs[15]);
 
-    // The allocator is LIFO for its free list, so these should
-    // come back in reverse order.
-    REQUIRE(allocator.get(8) == ptrs[15]);
-    REQUIRE(allocator.get(8) == ptrs[7]);
-    REQUIRE(allocator.get(8) == ptrs[3]);
+    // Free list is LIFO.
+    EXPECT_EQ(allocator.get(8), ptrs[15]);
+    EXPECT_EQ(allocator.get(8), ptrs[7]);
+    EXPECT_EQ(allocator.get(8), ptrs[3]);
 }
