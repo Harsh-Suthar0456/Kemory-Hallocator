@@ -1,6 +1,20 @@
-#include "buddy_allocator.hh"
 #include <cstddef>
+#include <iostream>
 #include <unistd.h>
+#include <algorithm>
+
+#include "buddy_allocator.hh"
+
+BuddyAllocator::BuddyAllocator() {
+    START_ADDR = getFromOS(BUDDY_MAX_SIZE);
+    if(START_ADDR == nullptr){
+        std::cerr << "Couldn't get memory from your damn OS bruh" << std::endl;
+        exit(1);
+    }
+    freeBlocks.resize(BUDDY_MAX_ORDER + 1);
+    freeBlocks[BUDDY_MAX_ORDER].push_back(START_ADDR);
+    blockOrderMap[START_ADDR] = BUDDY_MAX_ORDER;
+}
 
 void* BuddyAllocator::getBuddy(void* ptr){
     size_t size = getSize(ptr);
@@ -45,30 +59,82 @@ size_t BuddyAllocator::getSize(void* ptr){
 }
 
 void* BuddyAllocator::recursiveGet(void* currentPtr, unsigned int currentOrder, unsigned int targetOrder){
+
+    if(currentOrder > BUDDY_MAX_ORDER){
+        std::cerr << "Exceeded maximum order OR couldn't find a free block" << std::endl;
+        return nullptr;
+    }
+    if(currentOrder < targetOrder){
+        return recursiveGet(currentPtr, currentOrder+1, targetOrder);
+    }
+    if(freeBlocks[currentOrder].empty()){
+        return recursiveGet(currentPtr, currentOrder+1, targetOrder);
+    }
+
+    void* ptr = freeBlocks[currentOrder].back();
+    freeBlocks[currentOrder].pop_back();
+
+    while(currentOrder > targetOrder){
+        currentOrder--;
+        size_t blockSize = getSizeFromOrder(currentOrder);
+        void* buddyPtr = getBuddy(ptr, blockSize);
+        freeBlocks[currentOrder].push_back(buddyPtr);
+    }
+
+    return ptr;
     
 }
 
 void* BuddyAllocator::get(size_t size){
+
     if(size == 0 || size > BUDDY_MAX_SIZE){
         std::cerr << "Invalid size requested" << std::endl;
         return nullptr;
     }
 
     unsigned int order = getOrderFromSize(size);
-    size_t blockSize = getSizeFromOrder(order);
 
-    if(!freeBlocks[order].empty()){
-        void* ptr = freeBlocks[order].back();
-        freeBlocks[order].pop_back();
-        return ptr;
-    }
-
-    void* newBlock = getFromOS(blockSize);
+    void* newBlock = recursiveGet(START_ADDR, 0, order);
     if(newBlock == nullptr){
+        std::cerr << "Failed to allocate memory" << std::endl;
         return nullptr;
     }
 
     blockOrderMap[newBlock] = order;
 
     return newBlock;
+}
+
+
+
+void BuddyAllocator::tryMerge(void* ptr, size_t size){
+    void* buddyPtr = getBuddy(ptr, size);
+    auto it = std::find(freeBlocks[getOrderFromSize(size)].begin(), freeBlocks[getOrderFromSize(size)].end(), buddyPtr);
+    
+    if(it != freeBlocks[getOrderFromSize(size)].end()){
+        freeBlocks[getOrderFromSize(size)].erase(it);
+        void* mergedPtr = (ptr < buddyPtr) ? ptr : buddyPtr;
+        blockOrderMap.erase(ptr);
+        blockOrderMap.erase(buddyPtr);
+        blockOrderMap[mergedPtr] = getOrderFromSize(size * 2);
+        tryMerge(mergedPtr, size * 2);
+    } 
+    else {
+        freeBlocks[getOrderFromSize(size)].push_back(ptr);
+    }
+}
+
+void BuddyAllocator::addBack(void* ptr, size_t size){
+    blockOrderMap.erase(ptr);
+    tryMerge(ptr, size);
+}
+
+void BuddyAllocator::free(void* ptr){
+    if(ptr == nullptr){
+        std::cerr << "You sent a nullptr Bitch" << std::endl;
+        return;
+    }
+
+    size_t size = getSize(ptr);
+    addBack(ptr, size);
 }

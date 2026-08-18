@@ -7,6 +7,7 @@
 #include "base.h"
 
 #define BUDDY_MAX_SIZE 1024*16
+#define BUDDY_MAX_ORDER 14
 
 /*
 BuddyAllocator
@@ -30,8 +31,10 @@ class BuddyAllocator: public Allocator{
     void* getBuddy(void* ptr);
     void* getBuddy(void* ptr, size_t size);
     void* recursiveGet(void* currentPtr, unsigned int currentOrder, unsigned int targetOrder);
+    void tryMerge(void* ptr, size_t size);
                                            
   public:
+    BuddyAllocator();
     virtual void* get(size_t size) override;
     virtual void free(void* ptr) override;
 

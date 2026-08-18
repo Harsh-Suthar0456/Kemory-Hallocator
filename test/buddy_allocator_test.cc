@@ -1,117 +1,118 @@
 #include <gtest/gtest.h>
 
-// A common testing trick to access private members without modifying the header.
-// If you prefer not to use this, you can add GoogleTest's FRIEND_TEST macro 
-// into your buddy_allocator.hh file instead.
+// Trick to expose private members for unit testing
 #define private public
 #include "buddy_allocator.hh"
 #undef private
 
 class BuddyAllocatorTest : public ::testing::Test {
 protected:
-    BuddyAllocator allocator;
+    // We use a pointer so we can create a fresh allocator for each test,
+    // ensuring an empty blockOrderMap and a clean freeBlocks vector.
+    BuddyAllocator* allocator;
 
     void SetUp() override {
-        // Initialize mock state before each test
-        // We set a mock starting address so we can predictably test the XOR buddy math
-        allocator.START_ADDR = (void*)0x1000; 
+        // This will call your new constructor and run getFromOS(BUDDY_MAX_SIZE)
+        allocator = new BuddyAllocator();
     }
 
     void TearDown() override {
-        // Clean up after each test
-        allocator.blockOrderMap.clear();
-        allocator.freeBlocks.clear();
+        delete allocator;
     }
 };
 
 // ---------------------------------------------------------
-// Internal Math & Logic Tests
+// Internal Logic Tests
 // ---------------------------------------------------------
 
 TEST_F(BuddyAllocatorTest, OrderFromSizeCalculation) {
-    EXPECT_EQ(allocator.getOrderFromSize(0), 0);
-    
-    // Note: getOrderFromSize(1) will cause size-1 = 0. 
-    // __builtin_clzll(0) is mathematically undefined in GCC/Clang and usually returns 64 or 63.
-    // Consider updating your getOrderFromSize method to handle size == 1 explicitly!
-    // EXPECT_EQ(allocator.getOrderFromSize(1), 0); 
-    
-    EXPECT_EQ(allocator.getOrderFromSize(2), 1);
-    EXPECT_EQ(allocator.getOrderFromSize(3), 2);
-    EXPECT_EQ(allocator.getOrderFromSize(4), 2);
-    EXPECT_EQ(allocator.getOrderFromSize(5), 3);
-    EXPECT_EQ(allocator.getOrderFromSize(8), 3);
-    EXPECT_EQ(allocator.getOrderFromSize(9), 4);
-    EXPECT_EQ(allocator.getOrderFromSize(1024), 10);
+    EXPECT_EQ(allocator->getOrderFromSize(0), 0);
+    EXPECT_EQ(allocator->getOrderFromSize(1), 0);
+    EXPECT_EQ(allocator->getOrderFromSize(2), 1);
+    EXPECT_EQ(allocator->getOrderFromSize(3), 2);
+    EXPECT_EQ(allocator->getOrderFromSize(4), 2);
+    EXPECT_EQ(allocator->getOrderFromSize(5), 3);
+    EXPECT_EQ(allocator->getOrderFromSize(16), 4);
+    EXPECT_EQ(allocator->getOrderFromSize(1024), 10);
+    EXPECT_EQ(allocator->getOrderFromSize(1025), 11);
 }
 
 TEST_F(BuddyAllocatorTest, SizeFromOrderCalculation) {
-    EXPECT_EQ(allocator.getSizeFromOrder(0), 1);
-    EXPECT_EQ(allocator.getSizeFromOrder(1), 2);
-    EXPECT_EQ(allocator.getSizeFromOrder(2), 4);
-    EXPECT_EQ(allocator.getSizeFromOrder(3), 8);
-    EXPECT_EQ(allocator.getSizeFromOrder(10), 1024);
+    EXPECT_EQ(allocator->getSizeFromOrder(0), 1);
+    EXPECT_EQ(allocator->getSizeFromOrder(3), 8);
+    EXPECT_EQ(allocator->getSizeFromOrder(10), 1024);
+    EXPECT_EQ(allocator->getSizeFromOrder(14), 16384); // BUDDY_MAX_SIZE
 }
 
 TEST_F(BuddyAllocatorTest, BuddyAddressCalculation) {
-    // Assuming START_ADDR is 0x1000 (set in SetUp)
-    // If we have a block of size 16 (0x10) at offset 0x10 (absolute 0x1010)
-    // Its buddy should be at offset 0x00 (absolute 0x1000)
+    // We dynamically use your actual START_ADDR so this test works 
+    // regardless of what memory address the OS gives us via sbrk().
+    void* base = allocator->START_ADDR;
     
-    void* ptr = (void*)0x1010;
+    // Block size 16 (order 4) at offset 16 (0x10) from the base
+    void* ptr = (void*)((size_t)base + 16);
     
-    // We must populate blockOrderMap so getSize() works inside getBuddy()
-    allocator.blockOrderMap[ptr] = 4; // order 4 -> size 16
+    // We expect the buddy of the block at offset 16 to be the block at offset 0 (base)
+    void* buddy = allocator->getBuddy(ptr, 16);
+    EXPECT_EQ(buddy, base);
     
-    void* buddy = allocator.getBuddy(ptr);
-    EXPECT_EQ(buddy, (void*)0x1000);
-    
-    // Reverse test: the buddy of 0x1000 (size 16) should be 0x1010
-    allocator.blockOrderMap[(void*)0x1000] = 4;
-    EXPECT_EQ(allocator.getBuddy((void*)0x1000), (void*)0x1010);
-}
-
-TEST_F(BuddyAllocatorTest, GetSizeFromMap) {
-    void* mockPtr = (void*)0x2000;
-    allocator.blockOrderMap[mockPtr] = 5; // Order 5 -> Size 32
-    
-    EXPECT_EQ(allocator.getSize(mockPtr), 32);
-    
-    // Unmapped pointer should return 0 based on your implementation
-    void* unmappedPtr = (void*)0x3000;
-    EXPECT_EQ(allocator.getSize(unmappedPtr), 0);
+    // Reverse test: buddy of base (offset 0) with size 16 should be base + 16
+    EXPECT_EQ(allocator->getBuddy(base, 16), ptr);
 }
 
 // ---------------------------------------------------------
-// Public API Tests (Uncomment when implemented)
+// Public API Tests (Allocation & Freeing)
 // ---------------------------------------------------------
 
-/*
 TEST_F(BuddyAllocatorTest, BasicAllocation) {
-    // Tests that get() successfully allocates memory
-    void* ptr1 = allocator.get(16);
+    // Requesting 10 bytes -> Should allocate 16 bytes (Order 4)
+    void* ptr1 = allocator->get(10);
     ASSERT_NE(ptr1, nullptr);
     
-    // Size should be mapped and rounded up to the nearest power of 2
-    EXPECT_EQ(allocator.getSize(ptr1), 16);
+    // Check if get() successfully mapped the block order
+    EXPECT_EQ(allocator->getSize(ptr1), 16);
+    
+    // Verify recursive splitting happened correctly:
+    // Started with one block of Order 14, requested Order 4.
+    // Order 14 is popped, and the buddies for 13, 12, ... 4 are added back.
+    EXPECT_EQ(allocator->freeBlocks[14].size(), 0); // Max block was split
+    EXPECT_EQ(allocator->freeBlocks[13].size(), 1); // Remaining half of 14
+    EXPECT_EQ(allocator->freeBlocks[5].size(), 1);  // Just above target order
 }
 
-TEST_F(BuddyAllocatorTest, AllocationRounding) {
-    // Asking for 17 bytes should allocate order 5 (32 bytes)
-    void* ptr = allocator.get(17);
-    ASSERT_NE(ptr, nullptr);
-    EXPECT_EQ(allocator.getSize(ptr), 32);
-}
-
-TEST_F(BuddyAllocatorTest, FreeAndReuse) {
-    void* ptr1 = allocator.get(32);
+TEST_F(BuddyAllocatorTest, FreeAndMerge) {
+    void* ptr1 = allocator->get(16);
+    void* ptr2 = allocator->get(16);
+    
     ASSERT_NE(ptr1, nullptr);
+    ASSERT_NE(ptr2, nullptr);
     
-    allocator.free(ptr1);
+    // Because they were allocated sequentially from a split block, 
+    // ptr1 and ptr2 should be buddies.
+    EXPECT_EQ(allocator->getBuddy(ptr1, 16), ptr2);
     
-    // Assuming standard buddy allocator behavior, a new allocation 
-    // of the same size should reuse the recently freed block.
-    void* ptr2 = allocator.get(32);
-    EXPECT_EQ(ptr1, ptr2); 
+    // Free first block. No merge possible yet because its buddy (ptr2) is still allocated.
+    allocator->free(ptr1);
+    EXPECT_EQ(allocator->freeBlocks[4].size(), 1); // Order 4 list now holds ptr1
+    
+    // Free second block. This should trigger a recursive merge all the way back up!
+    allocator->free(ptr2);
+    
+    // The entire pool should be merged back into a single Order 14 block.
+    EXPECT_EQ(allocator->freeBlocks[4].size(), 0);
+    EXPECT_EQ(allocator->freeBlocks[14].size(), 1);
+    
+    // The fully merged block should be right back at START_ADDR
+    EXPECT_EQ(allocator->freeBlocks[14][0], allocator->START_ADDR);
+    
+    // Verify blockOrderMap was updated to track the newly merged giant block
+    EXPECT_EQ(allocator->blockOrderMap[allocator->START_ADDR], 14);
 }
-*/
+
+TEST_F(BuddyAllocatorTest, InvalidAllocations) {
+    // Requesting 0 bytes
+    EXPECT_EQ(allocator->get(0), nullptr);
+    
+    // Requesting more than max size
+    EXPECT_EQ(allocator->get(BUDDY_MAX_SIZE + 1), nullptr);
+}
