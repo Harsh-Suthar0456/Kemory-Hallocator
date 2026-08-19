@@ -1,21 +1,13 @@
+#include "gtest/gtest.h"
 #include <gtest/gtest.h>
 
 #include <cstddef>
 #include <unordered_set>
 #include <vector>
 
-#include "base.h"
 #include "segregated.h"
 
-struct DummyBaseAllocator : Allocator {
-    void* get(size_t) override {
-        return nullptr;
-    }
-
-    void free(void*) override {}
-};
-
-using Alloc = SegregatedListAllocator<8, DummyBaseAllocator>;
+using Alloc = SegregatedListBlock<8>;
 
 TEST(SegregatedListAllocatorTest, AllocatesBlocks) {
     Alloc allocator;
