@@ -22,6 +22,19 @@ class AllocatorBlock {
   public: 
     void* get(size_t size);
     void free(void* ptr);  
+
+  private:
+    template <typename AllocatorType>
+    void *getAs(size_t size) {
+        return reinterpret_cast<AllocatorType*>(this)->get(size);
+    }
+
+    template <typename AllocatorType>
+    void freeAs(void* ptr) {
+        return reinterpret_cast<AllocatorType*>(this)->free(ptr);
+    }
+
+
 };
 
 #pragma pack(pop)

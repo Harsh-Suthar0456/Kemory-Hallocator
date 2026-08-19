@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <iostream>
 #include <limits>
 
 #include "base.h"
@@ -42,6 +41,7 @@ void buddy_free(void *ptr);
 #pragma pack(push, 1)
 
 template <size_t Bytes> class SegregatedListBlock : AllocatorBlock {
+public:
   using int_type = unsigned_integral_t<Bytes>;
 
   struct Header {
@@ -52,11 +52,15 @@ template <size_t Bytes> class SegregatedListBlock : AllocatorBlock {
 
   constexpr static size_t MaxCount = std::max(1uz << Bytes, PAGE_SIZE / Bytes);
   constexpr static size_t BlockSize = MaxCount * Bytes;
+  constexpr static size_t MetadataSize = sizeof(Header) + sizeof(AllocatorBlock);
   constexpr static size_t BufferSize =
-      BlockSize - sizeof(Header) - sizeof(AllocatorBlock);
+      BlockSize - MetadataSize;
   constexpr static size_t BufferCount = BufferSize / Bytes;
+  constexpr static size_t Padding = BufferSize - BufferCount * Bytes; 
 
+private:
   Header header;
+  char padding[Padding];
   int_type data[BufferCount];
 
 public:
@@ -92,7 +96,7 @@ public:
   }
 
   void free(void *ptr) {
-    if (ptr < (void *)data && ptr >= (char *)data + BufferSize) {
+    if (ptr < (void *)data || ptr >= (char *)data + BufferSize) {
       return;
     }
     size_t off = ((int_type *)ptr - data);
