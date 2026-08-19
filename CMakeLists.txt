@@ -1,3 +1,4 @@
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 cmake_minimum_required(VERSION 3.20)
 
 project(khalloc
@@ -10,8 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(khalloc STATIC
-    src/khalloc.cc
-    src/segregated.cc
+    src/buddy_allocator.cc
 )
 
 target_include_directories(khalloc
