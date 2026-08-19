@@ -1,7 +1,7 @@
 include(GoogleTest)
 
 add_executable(unit_test
-
+    segregated_test.cc
 )
 
 target_link_libraries(unit_test
